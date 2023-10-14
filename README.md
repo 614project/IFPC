@@ -2,9 +2,25 @@
 
 Instant and fast processing of commands.
 
+```
+console.write "Hello, world!"
+```
+
 ## 사용법
 
 이거 라이브러리임, c# 프로그램에 추가해서 쓰면 됨.
+
+## 매력
+- 쉽게 익힐수 있음.
+- 단순하고 필수적인 기능만 모임.
+- 재밌는 언어임 ㅋ
+
+## 단점
+
+- 각잡고 쓰기에는 그리 좋지않음.
+- 인터프리터임 (그래도 심하게 느리진 않음)
+- 최적화를 스스로 해야됨.
+- GC 없음 (구현 예정)
 
 ### 실행
 
@@ -24,12 +40,41 @@ p.Run("code.ifpc");
 Processer p = new();
 
 p.AddCommand("printf",(d) => {
-	Console.WriteLine(d.value);
+	Console.WriteLine(d);
 	return null;
 });
 ````
 
+### C# 변수 추가
+```cs
+int a;
+
+Processer p = new();
+
+p.AddVariable(() => a,(x) => a=x);
+```
+
 ## IFPC 언어
+### 주석
+
+```
+;샌즈
+```
+공백 제외 첫번째 글자가 ';' 이면 됨.
+
+### 명령어
+
+기본적으로 아레처럼 실행 구조를 가짐.
+```
+(명령어) (인자) (인자2) (인자3) ...
+```
+
+#### 출력
+아레 코드와 같음. 따옴표 사이의 내용을 출력함.
+```
+console.write "하고싶은 말"
+```
+
 
 ### 변수
 #### 선언
@@ -45,6 +90,14 @@ myvariable = 614
 ```
 myvariable =
 ```
+
+#### 상수
+
+네, 앞에 '=' 붙히면 됨.
+```
+= varname
+```
+(곧 후술할 함수 안에서도 생성 가능하지만 지역 변수 취급됨)
 
 ### 함수
 
@@ -64,8 +117,8 @@ myvariable =
 	#t1 = type parameter1
 	#t2 = type parameter2
 
-	if #t1 is not "number" / return null
-	if #t2 is not "number" / return null
+	if #t1 is not "number" @ return null
+	if #t2 is not "number" @ return null
 
 	result = #t1 + #t2
 	return result
@@ -89,6 +142,7 @@ result = functionname 614 5020
 하지만 존재하는 변수일경우 그 변수를 접근하게 되므로 가능한 이 기능을 사용하는게 좋음.
 
 참고로 지역변수도 똑같이 ``#varname =`` 으로 삭제 가능.
+(함수 밖에서는 지역변수 생성불가)
 #### 제거
 
 ```
@@ -128,8 +182,6 @@ goto P
 이미 지나쳤던 레이블로 가능경우 가장 최근에 접했던 레이블로 이동.
 지나쳤던 레이블이 없는경우 곧 후술할 'skip' 명령어처럼 아레로 레이블을 계속 찾으러 감.
 
-만약 레이블이 없으면 코드 실행을 취소함.
-
 #### 건너뛰기 (skip)
 goto랑 기능 자체는 비슷하지만, 조금 다양하게 사용 가능함.
 
@@ -146,7 +198,50 @@ skip (레이블 명)
 
 #### 만약 (if)
 ```
+jyunni = 614
 
+if jyunni == 614 @ console.write "잘 작동함"
+```
+위 코드처럼 아레의 구조를 가짐.
+```
+if (조건식) @ (실행할 하나의 명령)
+```
+다른 프로그래밍 언어와 다르게 조건을 만족하면 바로 '@' 뒤에 있는 명령어 하나만 실행함.
 
-if 
+그럼 여러줄을 실행하고 싶을땐 어떻게 하느냐?
+```
+jyunni = 614;
+
+if jyunni != 614 @ goto ELSE;
+
+console.write "네 jyunni는 614입니다."
+goto END
+
+ELSE:
+console.write "네? jyunni가 614가 아니라고요?"
+
+END:
+```
+위 코드처럼 goto를 쓰거나
+
+곧 후술할 아레 문단을 쓰거나
+#### 만약의 끝 (fi)
+if 절에서 '@' 뒤에 ':a' 을 입력하면 됨.
+그 뒤 if를 끝낼 자리에 'fi a' 을 입력.
+('a' 는 임시 이름, 이걸 원하는걸로 바꿔 쓰면 됨.)
+
+예시:
+```
+jyunni = 614;
+
+if jyunni == 614 @ :END
+console.write "어 맞아맞아 놀랍게도 쥰니는 614야."
+fi END;
+```
+
+#### 반복
+네. goto 쓰세요.
+
+```
+
 ```
