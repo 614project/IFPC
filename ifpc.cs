@@ -24,13 +24,18 @@ namespace IFPC
 
         internal dynamic? RunLoop()
         {
+            string cmd;
+            List<Token> ts;
+
             for (int end = codes.Length; RunningPoint<end;RunningPoint++)
             {
                 //문자열 다듬기
-                string cmd = codes[RunningPoint];
+                cmd = codes[RunningPoint];
                 cmd = cmd.Trim();
-                if (cmd.Length == 0 || cmd[0] == ';') return null;
-                List<Token> ts = Tokenizer(cmd);
+                if (cmd.Length == 0 || cmd[0] == ';') continue;
+                ts = Tokenizer(cmd);
+
+                EXECUTEFORIF:
 
                 //특수 키워드
                 if (ts[0].type == TokenType.Keyword)
@@ -40,6 +45,38 @@ namespace IFPC
                         case Keywords.Return:
                             ts.RemoveAt(0);
                             return TokenToData(ts);
+                        case Keywords.Goto:
+                            if (ts.Count == 1) throw new IFPCError("이동할 위치를 지정하지 않았습니다.");
+                            if (ts[1].type == TokenType.Data && ts[1].value is int num) {
+                                if (num < 0) throw new IFPCError("이동할 위치는 0 또는 자연수여야합니다."); else RunningPoint = num - 1;
+                                continue;
+                            }
+                            if (ts[1].type != TokenType.Lable && ts[1].type != TokenType.Unknown) throw new IFPCError("이동할 위치를 지정하는 값은 0 또는 자연수이거나 레이블 명이여야 합니다.");
+                            if (Lables.TryGetValue(ts[1].value, out num))
+                            {
+                                RunningPoint = num;
+                                continue;
+                            }
+                            //못보던 goto 찾기
+                            string target = ts[1].value + ":";
+                            while (++RunningPoint < codes.Length)
+                            {
+                                if (codes[RunningPoint].Trim() == target)
+                                {
+                                    RunningPoint--;
+                                    break;
+                                }
+                            }
+                            continue;
+                        case Keywords.If:
+                            ts.RemoveAt(0);
+                            //거짓이면
+                            if (!Compare(ts)) continue;
+                            //참이면
+                            int i = 0;
+                            while (ts[i].type != TokenType.Prefix || ts[i].value != '@') if (++i >= ts.Count) throw new IFPCError("'@' 가 없습니다.");
+                            ts.RemoveRange(0, i+1);
+                            goto EXECUTEFORIF;
                     }
                 }
 
@@ -87,6 +124,36 @@ namespace IFPC
                 throw new IFPCError(ts[1].type == TokenType.Substitution ? $"존재하지 않는 변수/함수명 '{ts[0].value}' 를 제거할수 없습니다." : $"'{ts[0].value}' 는 알수없는 명령어/함수/변수 입니다.");
             }
 
+            //있는 변수면
+            if (ts[0].type == TokenType.DetailVariable)
+            {
+                if (ts.Count == 1 || ts[1].type != TokenType.Substitution) throw new IFPCError("변수를 함수로 사용할수 없습니다.");
+                VariableInfo vd = ts[0].value!;
+                //변수 제거인가?
+                if (ts.Count == 2)
+                {
+                    if (vd.Value.IsConstant) throw new IFPCError("상수를 제거할수 없습니다.");
+                    if (vd.Value.IsNative) throw new IFPCError("제거 불가능한 프로그램 내 변수입니다.");
+                    Global.Remove(vd.Name);
+                    return null;
+                }
+                //대입인가?
+                ts.RemoveRange(0, 2);
+                FunctionData? func = null;
+                //함수도 있는가?
+                if (ts[0].type == TokenType.Function)
+                {
+                    func = ts[0].value;
+                    ts.RemoveAt(0);
+                }
+                dynamic?[] arr = TokenToData(ts);
+                if (func is not null) {
+                    return vd.Value.Set = ExecuteFunction(func, arr);
+                }
+                if (arr.Length != 1) throw new IFPCError("변수에 인자를 2개 이상 넣을수 없습니다.");
+                return vd.Value.Set = arr[0];
+            }
+
             //레이블
             if (ts[0].type == TokenType.Lable)
             {
@@ -106,6 +173,26 @@ namespace IFPC
             throw new IFPCError("처리할수 없는 명령어");
         }
 
+        internal bool Compare(List<Token> tos)
+        {
+            for (int i=0;i<tos.Count; i++)
+            {
+                if (tos[i].type == TokenType.Prefix && tos[i].value == '@') break;
+                if (tos[i].type == TokenType.Compare)
+                {
+                    if (i == 0 || i == tos.Count - 1) throw new IFPCError("비교 연산자 양 옆에는 비교할 대상이 있어야 합니다.");
+                    dynamic? one = tos[i-1].type is TokenType.Variable ? ((VariableData)tos[i-1].value!).Get : tos[i-1].value!;
+                    dynamic? two = tos[i + 1].type is TokenType.Variable ? ((VariableData)tos[i - 1].value!).Get : tos[i + 1].value!;
+                    bool result = object.Equals(one, two);
+                    tos[i] = new(TokenType.Data,result);
+                    tos.RemoveAt(i-1);
+                    tos.RemoveAt(i);
+                }
+            }
+
+            return tos[0].value!;
+        }
+
         internal dynamic? Into(int index)
         {
             this.RunningPoint = index;
@@ -114,6 +201,7 @@ namespace IFPC
     
         internal dynamic?[] TokenToData(List<Token> tos)
         {
+
             //잘못된 인자 검출  및 변수 껍질 까기
             for (int i = 0; i < tos.Count; i++)
             {
@@ -323,6 +411,15 @@ namespace IFPC
                     continue;
                 }
 
+                //레이블?
+                if (one.Last() == ':')
+                {
+                    one = one.Substring(0,one.Length-1);
+                    if (one.Length == 0) throw new IFPCError("레이블에 이름을 지정하지 않았습니다.");
+                    tokens.Add(new(TokenType.Lable, one));
+                    continue;
+                }
+
                 //문자 다시 다듬기
                 SplitPrefix();
 
@@ -337,15 +434,6 @@ namespace IFPC
                         continue;
                     }
                     tokens.Add(new(TokenType.LocalVariableName, one));
-                    continue;
-                }
-
-                //레이블?
-                if (one[0] == ':')
-                {
-                    one = one.Substring(1);
-                    if (one.Length == 0) throw new IFPCError("레이블에 이름을 지정하지 않았습니다.");
-                    tokens.Add(new(TokenType.Lable, one));
                     continue;
                 }
 
@@ -387,8 +475,21 @@ namespace IFPC
                 if (Global.TryGetValue(one, out var v))
                 {
                     var func = v.Get;
-                    exist = func is FunctionData;
-                    tokens.Add(new(exist ? TokenType.Function : TokenType.Variable,exist?func:v));
+                    Token t;
+                    if (func is FunctionData)
+                    {
+                        t = new(TokenType.Function, func);
+                    } else
+                    {
+                        if (tokens.Count == 0)
+                        {
+                            t = new(TokenType.DetailVariable, new VariableInfo(one,v));
+                        } else
+                        {
+                            t = new(TokenType.Variable, v);
+                        }
+                    }
+                    tokens.Add(t);
                     continue;
                 }
 
@@ -453,7 +554,8 @@ namespace IFPC
         Compare,
         Substitution,
         Lable,
-        Keyword
+        Keyword,
+        DetailVariable,
     }
 
     public enum Keywords
