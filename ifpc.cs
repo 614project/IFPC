@@ -182,7 +182,7 @@ namespace IFPC
                 {
                     if (i == 0 || i == tos.Count - 1) throw new IFPCError("비교 연산자 양 옆에는 비교할 대상이 있어야 합니다.");
                     dynamic? one = tos[i-1].type is TokenType.Variable ? ((VariableData)tos[i-1].value!).Get : tos[i-1].value!;
-                    dynamic? two = tos[i + 1].type is TokenType.Variable ? ((VariableData)tos[i - 1].value!).Get : tos[i + 1].value!;
+                    dynamic? two = tos[i + 1].type is TokenType.Variable ? ((VariableData)tos[i + 1].value!).Get : tos[i + 1].value!;
                     bool result = object.Equals(one, two);
                     tos[i] = new(TokenType.Data,result);
                     tos.RemoveAt(i-1);
@@ -201,6 +201,7 @@ namespace IFPC
     
         internal dynamic?[] TokenToData(List<Token> tos)
         {
+            dynamic? one,two;
 
             //잘못된 인자 검출  및 변수 껍질 까기
             for (int i = 0; i < tos.Count; i++)
@@ -240,6 +241,7 @@ namespace IFPC
                         tos.RemoveAt(i - 1);
                         tos.RemoveAt(i);
                         i--;
+                        continue;
                     }
                     if (tos[i]!.value == '/')
                     {
@@ -248,6 +250,7 @@ namespace IFPC
                         tos.RemoveAt(i - 1);
                         tos.RemoveAt(i);
                         i--;
+                        continue;
                     }
                 }
             }
@@ -260,10 +263,21 @@ namespace IFPC
                     if (i == 0 || tos[i - 1]!.type != TokenType.Data || i + 1 == tos.Count || tos[i + 1]!.type != TokenType.Data) throw new IFPCError("연산자 양 옆에는 연산 가능한 값이 있어야만 합니다.");
                     if (tos[i]!.value == '+')
                     {
-                        tos[i] = new(TokenType.Data, tos[i - 1]!.value + tos[i + 1]!.value);
+                        one = tos[i - 1]!.value;
+                        two = tos[i + 1]!.value;
+                        if (one is string)
+                        {
+                            if (two is string) tos[i] = new(TokenType.Data,(string)one + (string)two);
+                            else tos[i] = new(TokenType.Data, (string)one + Convert.ToString(two));
+                        } else
+                        {
+                            if (two is string) tos[i] = new(TokenType.Data, Convert.ToString(one) + (string)two);
+                            else tos[i] = new(TokenType.Data, one + two);
+                        }
                         tos.RemoveAt(i - 1);
                         tos.RemoveAt(i);
                         i--;
+                        continue;
                     }
                     if (tos[i]!.value == '-')
                     {
@@ -271,6 +285,7 @@ namespace IFPC
                         tos.RemoveAt(i - 1);
                         tos.RemoveAt(i);
                         i--;
+                        continue;
                     }
                 }
             }
@@ -585,9 +600,10 @@ namespace IFPC
         public override dynamic? Get => Data;
         public override dynamic? Set { set => this.Data = value; }
 
-        public IFPCVariable(dynamic? data = null)
+        public IFPCVariable(dynamic? data = null,bool @const = false)
         {
             this.Data = data;
+            this.IsConstant = @const;
         }
     }
 
@@ -712,7 +728,7 @@ namespace IFPC
             new("convert.string",x =>
             {
                 if (x.Length == 0) return string.Empty;
-                return new string(x[0]);
+                return System.Convert.ToString(x[0]);
             }),
             new("convert.float",x =>
             {
@@ -723,6 +739,11 @@ namespace IFPC
                 }
                 return null;
             })
+        };
+        public static VariableInfo[] DataType = new VariableInfo[]
+        {
+            new("null",new IFPCVariable(null,true)),
+
         };
 
         public static Dictionary<string,VariableData> GetMap(RequireOption option = RequireOption.All)
@@ -741,6 +762,7 @@ namespace IFPC
 
             Inject(RequireOption.Console, Console);
             Inject(RequireOption.Convert, Convert);
+            Inject(RequireOption.DataType, DataType);
 
             return result;
         }
@@ -750,6 +772,7 @@ namespace IFPC
         {
             Console = 1,
             Convert = 2,
+            DataType = 4,
 
             All = 127
         }
